@@ -6,7 +6,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "watch": "nodemon --watch './' --ext ts --exec 'npm run dev'"
+    "watch": "nodemon --watch './' --ext ts --exec 'npm run dev'",
+    "postinstall": "puppeteer install"
   },
   "dependencies": {
     "express": "^4.21.2",

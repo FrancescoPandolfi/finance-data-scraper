@@ -5,13 +5,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/quote', async (req: Request, res: Response): Promise<any> => {
-  const symbol = (req.query.symbol as string) || 'SWDA.MI';
+  const isin = (req.query.symbol as string) || 'IE00B0M62Q58';
 
   try {
+
     const browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+
 
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -19,29 +21,39 @@ app.get('/quote', async (req: Request, res: Response): Promise<any> => {
 
     const page = await context.newPage();
 
-    const url = `https://www.marketwatch.com/investing/fund/${symbol}?countryCode=IT`;
+    // 🚫 Blocca risorse inutili
+    await page.route('**/*', (route) => {
+      const blocked = ['image', 'stylesheet', 'font', 'media'];
+      if (blocked.includes(route.request().resourceType())) {
+        return route.abort();
+      }
+      return route.continue();
+    });
+
+    const url = `https://www.borsaitaliana.it/borsa/etf/scheda/${isin}.html?lang=it`;
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    const data = await page.evaluate(() => {
-      const getMeta = (name: string) => document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || null;
+    const html = await page.content();
+    console.log(html); // 👈 utile per capire cosa ha caricato davvero la pagina
 
-      return {
-        price: getMeta('price'),
-        currency: getMeta('priceCurrency'),
-        change: getMeta('priceChange'),
-        exchangeCountry: getMeta('exchangeCountry')
-      };
+    const value = await page.evaluate(() => {
+      const el = document.querySelector('span.t-text.-black-warm-60.-formatPrice > strong');
+      return el?.textContent || null;
     });
+
+    console.log('Price:', value);
+
+    console.log(value);
 
     await browser.close();
 
-    if (!data.price) {
+    if (!value) {
       return res.status(404).json({ error: 'Data not found or blocked' });
     }
 
     return res.json({
-      symbol,
-      ...data
+      isin,
+      value
     });
 
   } catch (error) {

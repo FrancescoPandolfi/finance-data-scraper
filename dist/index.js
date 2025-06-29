@@ -4,40 +4,37 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const puppeteer_1 = __importDefault(require("puppeteer"));
+const playwright_1 = require("playwright");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
 app.get('/quote', async (req, res) => {
-    const symbol = req.query.symbol || 'SWDA';
+    const isin = req.query.symbol || 'IE00B0M62Q58';
     try {
-        const browser = await puppeteer_1.default.launch({
+        const browser = await playwright_1.chromium.launch({
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
-        const page = await browser.newPage();
-        // 👉 Imposta uno user-agent realistico per evitare blocchi
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        const url = `https://www.marketwatch.com/investing/fund/${symbol}?countryCode=IT`;
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        // 👉 Salva l'intero HTML per debug (opzionale)
-        const html = await page.content();
-        console.log(html); // ← utile per capire se è stato bloccato o se c'è un CAPTCHA
-        const data = await page.evaluate(() => {
-            const getMeta = (name) => document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || null;
-            return {
-                price: getMeta('price'),
-                currency: getMeta('priceCurrency'),
-                change: getMeta('priceChange'),
-                exchangeCountry: getMeta('exchangeCountry')
-            };
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         });
+        const page = await context.newPage();
+        const url = `https://www.borsaitaliana.it/borsa/etf/scheda/${isin}.html?lang=it`;
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const html = await page.content();
+        console.log(html); // 👈 utile per capire cosa ha caricato davvero la pagina
+        const value = await page.evaluate(() => {
+            const el = document.querySelector('span.t-text.-black-warm-60.-formatPrice > strong');
+            return el?.textContent || null;
+        });
+        console.log('Price:', value);
+        console.log(value);
         await browser.close();
-        if (!data.price) {
-            return void res.status(404).json({ error: 'Data not found or blocked' });
+        if (!value) {
+            return res.status(404).json({ error: 'Data not found or blocked' });
         }
-        return void res.json({
-            symbol,
-            ...data
+        return res.json({
+            isin,
+            value
         });
     }
     catch (error) {
